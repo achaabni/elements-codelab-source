@@ -1,0 +1,141 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/vaadin-combo-box/vaadin-combo-box.html">
+<link rel="import" href="../../bower_components/vaadin-date-picker/vaadin-date-picker.html">
+<link rel="import" href="../../bower_components/vaadin-grid/vaadin-grid.html">
+
+<dom-module id="github-browser-app">
+  <template>
+    <style>
+      :host {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        padding: 16px;
+      }
+
+      .search > * {
+        display: inline-block;
+        margin-right: 8px;
+      }
+
+      #repo-selector {
+        width: 400px;
+      }
+
+      #commits {
+        flex: 1;
+      }
+
+      .avatar {
+        height: 32px;
+        width: 32px;
+        margin: 0 auto;
+      }
+    </style>
+
+
+<div class="search">
+  <vaadin-combo-box label="Select repository" id="repo-selector" filtered-items="[[repos]]" value="{{repo}}" filter="{{filter}}"
+    loading="[[loading]]"></vaadin-combo-box>
+
+  <template is="dom-if" if="[[repo]]">
+    <vaadin-date-picker label="Since" value="{{dateFilters.since}}"></vaadin-date-picker>
+    <vaadin-date-picker label="Until" value="{{dateFilters.until}}"></vaadin-date-picker>
+  </template>
+</div>
+
+
+<vaadin-grid id="commits" items="[[commits]]">
+  <vaadin-grid-column flex="0">
+    <template class="header"></template>
+    <template><img class="avatar" src="[[item.author.avatar_url]]" alt="[[item.author.login]]"></template>
+  </vaadin-grid-column>
+
+  <vaadin-grid-column flex="1">
+    <template class="header">Author</template>
+    <template>[[item.commit.author.name]]</template>
+  </vaadin-grid-column>
+  <vaadin-grid-column flex="1">
+    <template class="header">Time</template>
+    <template>
+      [[_formatDate(item.commit.author.date)]]
+    </template>
+  </vaadin-grid-column>
+  <vaadin-grid-column flex="2">
+    <template class="header">Message</template>
+    <template>[[item.commit.message]]</template>
+  </vaadin-grid-column>
+</vaadin-grid>
+</template>
+
+<script>
+  Polymer({
+
+    is: 'github-browser-app',
+
+    properties: {
+      filter: {
+        type: String,
+        observer: '_filterChanged'
+      },
+      loading: Boolean,
+      repos: {
+        type: Array,
+        value: function () {
+          return [];
+        }
+      },
+      repo: {
+        type: String,
+        observer: '_fetchCommits'
+      },
+      commits: Array,
+      dateFilters: {
+        type: Object,
+        value: function () {
+          return {};
+        }
+      }
+    },
+
+    observers: [
+      '_fetchCommits(dateFilters.*)'
+    ],
+
+    _filterChanged: function () {
+      this.debounce('filter', this._search, 500);
+    },
+
+    _search: function () {
+      if (!this.filter) return;
+      this.loading = true;
+
+      fetch('https://api.github.com/search/repositories?q=' + this.filter)
+        .then(res => res.json())
+        .then(json => {
+          this.repos = json.items.map(repo => repo['full_name']);
+          this.loading = false;
+        })
+        .catch(() => this.loading = false);
+    },
+
+    _fetchCommits: function () {
+      if (this.repo) {
+        let queries = Object.keys(this.dateFilters).map(q => {
+          if (this.dateFilters[q]) {
+            return q + '=' + this.dateFilters[q];
+          }
+        });
+        fetch(`https://api.github.com/repos/${this.repo}/commits?${queries.join('&')}`)
+          .then(res => res.json())
+          .then(commits => this.commits = commits);
+      }
+    },
+
+    _formatDate: function (dateString) {
+      return dateString ? dateString.replace(/[^\d:-]/g, ' ').trim() : '-';
+    }
+
+  });
+</script>
+</dom-module>
